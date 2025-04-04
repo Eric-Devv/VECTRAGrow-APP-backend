@@ -1,7 +1,7 @@
 const multer = require('multer');
-const path = require('path');
-const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const cloudinary = require('cloudinary').v2;
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
+const { AppError } = require('../utils/error');
 
 // Configure Cloudinary
 cloudinary.config({
@@ -15,23 +15,27 @@ const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
     folder: 'vectragrow',
-    allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'mp4', 'webm'],
-    resource_type: 'auto'
+    resource_type: 'auto',
+    allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'mp4', 'webm', 'pdf', 'doc', 'docx'],
+    transformation: [{ width: 1000, height: 1000, crop: 'limit' }]
   }
 });
 
 // File filter
 const fileFilter = (req, file, cb) => {
-  const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'video/mp4', 'video/webm'];
-  
-  if (allowedTypes.includes(file.mimetype)) {
+  // Accept images, videos, and documents
+  if (file.mimetype.startsWith('image/') ||
+      file.mimetype.startsWith('video/') ||
+      file.mimetype === 'application/pdf' ||
+      file.mimetype === 'application/msword' ||
+      file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
     cb(null, true);
   } else {
-    cb(new Error('Invalid file type. Only images and videos are allowed.'), false);
+    cb(new AppError('Invalid file type. Only images, videos, and documents are allowed.', 400), false);
   }
 };
 
-// Create multer upload instance
+// Configure multer
 const upload = multer({
   storage: storage,
   fileFilter: fileFilter,
@@ -40,4 +44,19 @@ const upload = multer({
   }
 });
 
-module.exports = upload; 
+// Error handling middleware
+const handleUploadError = (err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return next(new AppError('File size too large. Maximum size is 10MB.', 400));
+    }
+    return next(new AppError(err.message, 400));
+  }
+  next(err);
+};
+
+module.exports = {
+  upload,
+  handleUploadError,
+  cloudinary
+}; 
